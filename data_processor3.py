@@ -1,3 +1,4 @@
+#regular algorithm as of july 30,2024
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
