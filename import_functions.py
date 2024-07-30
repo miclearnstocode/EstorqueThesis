@@ -1,5 +1,5 @@
 #pip install mysql-connector-python
-
+#a trial importation
 import csv
 import mysql.connector
 from tkinter import filedialog
