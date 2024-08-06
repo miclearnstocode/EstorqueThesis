@@ -1,0 +1,28 @@
+import csv
+from tkinter import filedialog
+
+def import_grading_sheet(title):
+    """Import a grading sheet and process the data."""
+    file_path = filedialog.askopenfilename(title=title, filetypes=(("CSV Files", "*.csv"), ("All Files", "*.*")))
+    if file_path:
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            grading_data = [row for row in reader]
+        print(f"Imported grading sheet from {file_path}")
+        return grading_data
+    else:
+        print("No file selected.")
+        return None
+
+def import_student_data(title):
+    """Import student data and process the data."""
+    file_path = filedialog.askopenfilename(title=title, filetypes=(("CSV Files", "*.csv"), ("All Files", "*.*")))
+    if file_path:
+        with open(file_path, newline='') as csvfile:
+            reader = csv.reader(csvfile)
+            student_data = [row for row in reader]
+        print(f"Imported student data from {file_path}")
+        return student_data
+    else:
+        print("No file selected.")
+        return None
