@@ -1,0 +1,120 @@
+import importlib
+import logging
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import AgglomerativeClustering
+from tkinter import filedialog
+from database import DatabaseHandler
+
+
+class AppraisalScreen(tk.Frame):
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.configure(bg="#00BFFF")  # Set background color
+        self.data_appraised = False
+
+        # Add widgets for appraisal screen
+        self.label = tk.Label(self, text="Appraisal", font=("Helvetica", 18, "bold"))
+        self.label.pack(pady=20)
+
+        # Create a Notebook to hold the Treeview (for matched subjects)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+
+        # Create a frame for displaying matched subjects within the Notebook
+        self.frame1 = tk.Frame(self.notebook, bg="#00BFFF")
+        self.notebook.add(self.frame1, text="Matched Subjects")
+
+        # Define the Treeview for displaying matched subjects
+        self.tree1 = ttk.Treeview(self.frame1, show="headings", height=15)
+        self.tree1.pack(fill=tk.BOTH, expand=True)
+
+        # Appraise button
+        self.appraise_button = ttk.Button(self, text="Appraise", command=self.start_appraisal)
+        self.appraise_button.pack(pady=10)
+
+        ttk.Button(self, text="Back", command=self.master.show_main_menu).pack(pady=10)
+
+    def select_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+        return file_path
+
+    def process_data(self, old_file_path, new_file_path):
+        # Read old and new curriculum data
+        df_old = pd.read_csv(old_file_path)
+        df_new = pd.read_csv(new_file_path)
+
+        # Clean Course_No and Prerequisite columns
+        df_old['Course_No'] = df_old['Course_No'].astype(str).str.strip()
+        df_new['Course_No'] = df_new['Course_No'].astype(str).str.strip()
+
+        # Clean column names
+        df_old.columns = [col.strip() for col in df_old.columns]
+        df_new.columns = [col.strip() for col in df_new.columns]
+
+        # Check if 'Course_No' column exists
+        if 'Course_No' not in df_old.columns or 'Course_No' not in df_new.columns:
+            messagebox.showerror("Error", "'Course_No' column is missing in one of the files.")
+            return
+
+        # Filter old curriculum to keep only rows where 'Grades' are not NaN
+        filtered_old = df_old[df_old['Grades'].notna()]
+
+        # Merge old and new curriculum data, using 'Course_No'
+        matched_subjects = pd.merge(
+            df_new,  # New curriculum data (all subjects from 1st to 4th year)
+            filtered_old[['Course_No', 'Grades']],  # Old curriculum data (only subjects with grades)
+            on='Course_No',  # Match based on Course_No
+            how='left'  # Retain all rows from the new curriculum, adding grades where matched
+        )
+        # Use 'Grades_x' from the old curriculum and 'Grades_y' from the new curriculum
+        matched_subjects['Grades'] = matched_subjects['Grades_x'].fillna(matched_subjects['Grades_y'])
+
+        # Drop the now-redundant 'Grades_x' and 'Grades_y' columns
+        matched_subjects = matched_subjects.drop(columns=['Grades_x', 'Grades_y'])
+        # Prioritize Descriptive_Title from the new curriculum
+        matched_subjects['Descriptive_Title'] = matched_subjects['Descriptive_Title']
+
+        # Drop rows without valid 'Course_No' or 'Descriptive_Title' if necessary (can be optional)
+        matched_subjects = matched_subjects.dropna(subset=['Course_No', 'Descriptive_Title'])
+
+        # Sort the data by year (assuming you have a 'Year_Level' or equivalent column)
+        if 'Year_Level' in matched_subjects.columns:
+            matched_subjects = matched_subjects.sort_values(by=['Year_Level', 'Course_No'])
+
+        return matched_subjects
+
+    def display_data(self, matched_subjects):
+        # Clear existing Treeview data
+        for child in self.tree1.get_children():
+            self.tree1.delete(child)
+
+        # Define which columns to display
+        columns_to_display = ['Course_No', 'Descriptive_Title', 'Year_Level', 'Units', 'Lec', 'Lab', 'Grades']
+        self.tree1["columns"] = columns_to_display
+
+        # Configure Treeview headings and column widths
+        for col in columns_to_display:
+            self.tree1.heading(col, text=col)
+            self.tree1.column(col, width=100)
+
+        # Insert matched subjects data into Treeview
+        for _, row in matched_subjects.iterrows():
+            values = [row.get(col, "") for col in columns_to_display]  # Safely get values
+            self.tree1.insert("", "end", values=values)
+
+    def start_appraisal(self):
+        old_file_path = self.select_file()
+        new_file_path = self.select_file()
+
+        matched_subjects = self.process_data(old_file_path, new_file_path)
+    
+        if matched_subjects is not None:
+            self.display_data(matched_subjects)
+
+        self.data_appraised = True  # Mark as appraised
