@@ -1,0 +1,350 @@
+import csv
+import re
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from database import DatabaseHandler
+
+class StudentScreen(tk.Frame):
+    def __init__(self, master):
+        super().__init__(master, bg="#00BFFF")
+        self.master = master
+        self.columns = ('ID_NO', 'STUDENT_NAME', 'YEAR_LEVEL', 'AGE', 'SEX', 'EMAIL_ADDRESS', 'SHS', 'ADDRESS')
+
+        tk.Label(self, text="Student", bg="#00BFFF").pack()
+
+        # Create buttons for Regular/Irregular students
+        self.regular_frame = tk.Frame(self, bg="#00BFFF")
+        self.regular_frame.pack(pady=10)
+
+        ttk.Button(self.regular_frame, text="Regular", command=lambda: self.show_search_bar("Regular")).pack(side=tk.LEFT)
+        ttk.Button(self.regular_frame, text="Irregular", command=lambda: self.show_search_bar("Irregular")).pack(side=tk.LEFT)
+
+        # Frames for search bar and student list
+        self.search_frame = tk.Frame(self)
+        self.search_frame.pack(pady=10)
+
+        self.student_list_frame = tk.Frame(self)
+        self.student_list_frame.pack(pady=10)
+
+        self.print_frame = tk.Frame(self)
+        self.print_frame.pack(pady=10)
+
+        ttk.Button(self, text="Back", command=self.master.show_main_menu).pack(pady=10)
+
+    def show_search_bar(self, status):
+        # Clear search frame before showing new search bar
+        for widget in self.search_frame.winfo_children():
+            widget.destroy()
+
+        tk.Label(self.search_frame, text=f"Search {status} Students by ID NO:").pack(side=tk.LEFT, padx=5)
+
+        self.search_var = tk.StringVar()
+        self.search_entry = ttk.Entry(self.search_frame, textvariable=self.search_var)
+        self.search_entry.pack(side=tk.LEFT, padx=5)
+
+        search_button = ttk.Button(self.search_frame, text="Search", command=lambda: self.search_student(self.search_var.get()))
+        search_button.pack(side=tk.LEFT, padx=5)
+        
+        subject_button = ttk.Button(self.search_frame, text="Subject", command=self.display_curriculum)
+        subject_button.pack(side=tk.LEFT, padx=5)
+
+        self.year_var = tk.StringVar()
+        self.year_combox = ttk.Combobox(self.search_frame, textvariable=self.year_var)
+        self.year_combox['values'] = ('1st yr', '2nd yr', '3rd yr', '4th yr')
+        self.year_combox.current(0)
+        self.year_combox.pack(side=tk.LEFT, padx=5)
+
+        import_button = ttk.Button(self.search_frame, text="Add student", command=self.import_students)
+        import_button.pack(side=tk.LEFT, padx=5)
+
+        # Bind the Enter key to the search functionality
+        self.search_entry.bind("<Return>", lambda event: self.search_student(self.search_var.get()))
+
+
+    def search_student(self, id_no):
+        if not id_no:
+            raise ValueError("Invalid ID_NO value")
+        if not re.match(r'^[\w-]+$', id_no):
+            raise ValueError("Invalid ID_NO value")
+        for widget in self.student_list_frame.winfo_children():
+            widget.destroy()
+
+        db_handler = DatabaseHandler()
+        results = db_handler.fetch_students([id_no])
+
+        # Check if any results were found
+        if not results:
+            messagebox.showinfo("No Results", "No students found with the specified ID NO.")
+            return
+
+        # Treeview widget
+        tree = ttk.Treeview(self.student_list_frame, columns=self.columns, show='headings')
+        tree.pack(fill="both", expand=True)
+
+        # columns for the Treeview
+        for column in self.columns:
+            tree.heading(column, text=column)
+            tree.column(column, anchor=tk.W)
+
+            # column width (you can adjust the width as needed)
+            tree.column("ID_NO", width=80)
+            tree.column("STUDENT_NAME", width=300)
+            tree.column("YEAR_LEVEL", width=50)
+            tree.column("AGE", width=50)
+            tree.column("SEX", width=50)
+            tree.column("EMAIL_ADDRESS", width=200)
+            tree.column("SHS", width=100)
+            tree.column("ADDRESS", width=200)
+
+        #Treeview
+        for row in results:
+            tree.insert("", "end", values=row)
+
+        # Fetch curriculum data for this year level
+        curriculum_data = db_handler.fetch_curriculum([results[0][2]])
+        # Display curriculum
+        self.display_curriculum(results[0][2], curriculum_data)
+       
+        
+    def display_curriculum(self, year_levels, curriculum_data):
+            # Fetch curriculum data for this year level
+        db_handler = DatabaseHandler()
+        year_levels = ['1.1', '1.2', '2.1', '2.2', '3.1', '3.2', '4.1', '4.2']  # Get the selected year level from the combobox
+        curriculum_data = db_handler.fetch_curriculum(year_levels)
+
+        curriculum_notebook = ttk.Notebook(self.student_list_frame)
+        curriculum_notebook.pack(fill="both", expand=True)
+
+        for year, rows in curriculum_data.items():
+            year_frame = ttk.Frame(curriculum_notebook)
+            curriculum_notebook.add(year_frame, text=f"Year {year}")
+
+            curriculum_tree = ttk.Treeview(year_frame, columns=("Course_No", "Descriptive_Title", "Units", "Lec", "Lab","Prerequisite", "Grades"), show='headings')
+            curriculum_tree.pack(fill="both", expand=True)
+
+            for column in ("Course_No", "Descriptive_Title", "Units", "Lec", "Lab","Prerequisite", "Grades"):
+                curriculum_tree.heading(column, text=column)
+                curriculum_tree.column(column, anchor=tk.W)
+
+            column_widths = {
+                "Course_No": 70,
+                "Descriptive_Title": 200,
+                "Units": 50,
+                "Lab": 50,
+                "Lec": 50,
+                "Prerequisite": 100,
+                "Grades": 50
+            }
+            for column, width in column_widths.items():
+                curriculum_tree.column(column, width=width)
+            
+            total_units = 0
+            total_lec = 0
+            total_lab = 0
+
+            for row in rows:
+                 # Swap the Grades and Prerequisite values
+                row = list(row)
+                row[0] = row[0] #Course no
+                row[1] = row[1] #Desciptive title
+                row[2] = row[3] #units
+                row[3] = row[4] #lec
+                row[4] = row[5] #lab
+                row[5] = row[6] #prerequisite
+                row[6] = row[7] #grades
+                curriculum_tree.insert("", "end", values=row)
+                total_units += int(row[2])
+                total_lec += int(row[3])
+                total_lab += int(row[4])
+
+            total_row = ["", "", total_units, total_lec, total_lab, "", ""]
+            curriculum_tree.insert("", "end", values=total_row, tag="total")
+            curriculum_tree.tag_configure("total", font=("Helvetica", 11))
+
+        style = ttk.Style()
+        style.configure("PrintButton.TButton", font=("Helvetica", 12))
+        self.year_semester_var = tk.StringVar()
+        semester_combobox = ttk.Combobox(self.print_frame, textvariable=self.year_semester_var)
+        semester_combobox['values'] = ('1st sem', '2nd sem')
+        semester_combobox.pack(side=tk.LEFT, padx=5)
+        print_button = ttk.Button(
+            self.print_frame,
+            text="Print",
+            style="PrintButton.TButton",
+            command=self.print_students
+        )
+        print_button.pack(side=tk.LEFT, padx=5)
+  
+              
+    def print_students(self):
+        # Create a new window for printing
+        print_window = tk.Toplevel(self)
+        print_window.title("Pre-Registration Form")
+
+        # Set the window size to 210x297 mm (A4 paper size)
+        print_window.geometry("794x1123")  # 794x1123 pixels (approx. 210x297 mm at 96 dpi)
+
+        # Create a canvas to hold the print content
+        canvas = tk.Canvas(print_window, width=794, height=1123)
+        canvas.pack()
+
+        # Create a frame to hold the print content
+        print_frame = tk.Frame(canvas)
+        canvas.create_window((0, 0), window=print_frame, anchor="nw")
+
+        # Heading
+        heading_label = tk.Label(print_frame, text="Pre-Registration Form", font=("Times New Roman", 18, "bold"))
+        heading_label.pack(pady=(20, 10))
+
+        # Block of content on the left
+        left_frame = tk.Frame(print_frame)
+        left_frame.pack(side=tk.LEFT, padx=10)
+
+        ttk.Label(left_frame, text="Name:").pack()
+        ttk.Label(left_frame, text="Course/Year:").pack()
+        ttk.Label(left_frame, text="Parent/Guardian:").pack()
+        ttk.Label(left_frame, text="Contact No:").pack()
+        
+        # Simulating year level and semester selection
+        year_level = self.year_var.get()  # Example: "1st Year"
+        semester = self.year_semester_var.get()  # Example: "1st Semester"
+
+        if semester == '1st sem':
+            year_level_sem = f'{year_level} 1st sem'
+        elif semester == '2nd sem':
+            year_level_sem = f'{year_level} 2nd sem'
+
+        # Fetch course information (simulated here for the example)
+        db_handler = DatabaseHandler()
+        course_info = self.course_info  # Replace with db_handler.fetch_course_info(year_level_sem)
+
+        # Table
+        table_frame = tk.Frame(print_frame)
+        table_frame.pack(pady=10)
+
+        table_heading = ttk.Label(table_frame, text="Course Information", font=("Times New Roman", 12, "bold"))
+        table_heading.pack(pady=5)
+
+        # Columns for Treeview (added Units column between Descriptive Title and Faculty)
+        table_columns = ("Course No", "Descriptive Title", "Units", "Faculty")
+        
+        # Treeview with custom style for gridlines
+        style = ttk.Style()
+        style.configure("Treeview", highlightthickness=1, bd=1, font=("Times New Roman", 10))
+        style.configure("Treeview.Heading", font=("Times New Roman", 10, "bold"))
+        style.configure("Treeview", rowheight=25)
+
+        tree = ttk.Treeview(table_frame, columns=table_columns, show="headings")
+        for column in table_columns:
+            tree.column(column, anchor="w", width=150)
+            tree.heading(column, text=column, anchor="w")
+
+        tree.pack(expand=True, fill="both")
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+        # Insert course information into the table with gridlines
+        for idx, row in enumerate(course_info):
+            tag = "evenrow" if idx % 2 == 0 else "oddrow"
+            tree.insert("", "end", values=row, tags=(tag,))
+
+        # Configure gridlines by applying alternating background colors
+        tree.tag_configure("oddrow", background="white")
+        tree.tag_configure("evenrow", background="#f2f2f2")
+
+        # Signature area on the right
+        right_frame = tk.Frame(print_frame)
+        right_frame.pack(side=tk.RIGHT, padx=10)
+
+        signature_label = ttk.Label(right_frame, text="Signature: __________________", font=("Times New Roman", 12))
+        signature_label.pack(pady=(50, 0))
+    def import_students(self):
+        # Clear student list frame before adding import functionality
+        for widget in self.student_list_frame.winfo_children():
+            if isinstance(widget, ttk.Treeview) or isinstance(widget, ttk.Button): 
+                widget.destroy()
+
+        ttk.Label(self.student_list_frame, text="Select a file to import:").pack()
+        self.file_entry = tk.Entry(self.student_list_frame)
+        self.file_entry.pack()
+        ttk.Button(self.student_list_frame, text="Browse", command=self.browse_file).pack()
+        ttk.Button(self.student_list_frame, text="Import", command=self.import_students_callback).pack()
+
+        # Treeview widget inside a Frame with a Scrollbar to display the imported data
+        treeview_frame = tk.Frame(self.student_list_frame)
+        treeview_frame.pack(fill="both", expand=True)  # Make the frame fill the available space
+
+        # vertical scrollbar to the Treeview
+        treeview_scrollbar = ttk.Scrollbar(treeview_frame, orient="vertical")
+        treeview_scrollbar.pack(side="right", fill="y")
+
+        # horizontal scrollbar to the Treeview
+        treeview_scrollbar_x = ttk.Scrollbar(treeview_frame, orient="horizontal")
+        treeview_scrollbar_x.pack(side="bottom", fill="x")
+
+     # Treeview widget and configure it
+        self.treeview = ttk.Treeview(treeview_frame, yscrollcommand=treeview_scrollbar.set, xscrollcommand=treeview_scrollbar_x.set)
+        self.treeview.pack(fill="both", expand=True)  # Make the Treeview fill the frame
+
+    # scrollbars
+        treeview_scrollbar.config(command=self.treeview.yview)
+        treeview_scrollbar_x.config(command=self.treeview.xview)
+
+    # columns for the Treeview
+        self.columns = ('ID_NO', 'STUDENT_NAME', 'YEAR_LEVEL', 'AGE', 'SEX', 'EMAIL_ADDRESS', 'SHS', 'ADDRESS')
+        self.treeview['columns'] = self.columns
+
+        self.treeview.heading('#0', text='')
+        self.treeview.heading('#1', text='ID_NO')
+        self.treeview.heading('#2', text='STUDENT_NAME', anchor=tk.W)
+        self.treeview.heading('#3', text='YEAR_LEVEL')
+        self.treeview.heading('#4', text='AGE')
+        self.treeview.heading('#5', text='SEX')
+        self.treeview.heading('#6', text='EMAIL_ADDRESS')
+        self.treeview.heading('#7', text='SHS')
+        self.treeview.heading('#8', text='ADDRESS')
+
+        self.treeview.column('#0', width=0, stretch=tk.NO)
+        self.treeview.column('#1', width=80, stretch=tk.NO)
+        self.treeview.column('#2', width=300, stretch=tk.YES)
+        self.treeview.column('#3', width=50, stretch=tk.NO)
+        self.treeview.column('#4', width=50, stretch=tk.NO)
+        self.treeview.column('#5', width=50, stretch=tk.NO)
+        self.treeview.column('#6', width=200, stretch=tk.YES)
+        self.treeview.column('#7', width=100, stretch=tk.YES)
+        self.treeview.column('#8', width=200, stretch=tk.YES)
+
+    def browse_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        self.file_entry.delete(0, tk.END)
+        self.file_entry.insert(0, file_path)
+
+    def import_students_callback(self):
+        file_path = self.file_entry.get()
+        if file_path:
+            try:
+                with open(file_path, 'r') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    data = [row for row in reader]
+                
+                # Clear existing data in Treeview
+                self.treeview.delete(*self.treeview.get_children())
+
+                # Insert new data into Treeview
+                for row in data:
+                    values = [row.get(column, '') for column in self.columns]
+                    self.treeview.insert('', 'end', values=values)
+
+                # Save to the database
+                db_handler = DatabaseHandler()
+                db_handler.insert_students('student_information', data)
+
+                messagebox.showinfo("Success", "Students imported successfully!")
+            except csv.Error as err:
+                messagebox.showerror("Error", "Error reading CSV file: " + str(err))
+        else:
+            messagebox.showerror("Error", "Please select a file to import.")
+
