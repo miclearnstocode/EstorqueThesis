@@ -1,0 +1,113 @@
+import tkinter as tk
+from tkinter import ttk, filedialog
+from tkinter import messagebox
+from database import DatabaseHandler
+import pandas as pd  # We'll use pandas to load the CSV file
+
+class GradeScreen(tk.Frame):
+    def __init__(self, master):
+        super().__init__(master, bg="#008080")
+        self.master = master
+
+        self.data_frame = None  # Frame to hold the grading data table
+        self.create_widgets()
+
+    def create_widgets(self):
+        tk.Label(self, text="Grade", bg="#008080").pack(pady=10)
+
+        # Create a frame to hold the year and semester selectors
+        selection_frame = tk.Frame(self, bg="#008080")
+        selection_frame.pack(pady=10)
+
+        # Dropdown for selecting the year level
+        year_var = tk.StringVar()
+        year_var.set("1st Year")  # default value
+        year_label = tk.Label(selection_frame, text="Year Level:", bg="#008080")
+        year_label.pack(side=tk.LEFT, padx=5)
+        year_option = ttk.OptionMenu(selection_frame, year_var, "1st Year", "1st Year", "2nd Year", "3rd Year", "4th Year")
+        year_option.pack(side=tk.LEFT, padx=5)
+
+        # Dropdown for selecting the semester
+        semester_var = tk.StringVar()
+        semester_var.set("1st Semester")  # default value
+        semester_label = tk.Label(selection_frame, text="Semester:", bg="#008080")
+        semester_label.pack(side=tk.LEFT, padx=5)
+        semester_option = ttk.OptionMenu(selection_frame, semester_var, "1st Semester", "1st Semester", "2nd Semester")
+        semester_option.pack(side=tk.LEFT, padx=5)
+
+        # Button to import the grading sheet
+        import_button = ttk.Button(selection_frame, text="Import", command=lambda: self.open_file_dialog(year_var.get(), semester_var.get()))
+        import_button.pack(side=tk.LEFT, padx=5)
+
+        # Save button (initially disabled)
+        self.save_button = ttk.Button(selection_frame, text="Save Grade", state=tk.DISABLED, command=self.on_save_button_click)
+        self.save_button.pack(side=tk.LEFT, padx=5)
+
+        # Back button
+        ttk.Button(self, text="Back", command=self.master.show_main_menu).pack(pady=10)
+        # Create a DatabaseHandler instance
+        self.db_handler = DatabaseHandler()
+
+    def open_file_dialog(self, year, semester):
+        # Open a file dialog to select a CSV file
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if file_path:
+            self.import_grading_sheet(file_path, year, semester)
+
+    def import_grading_sheet(self, file_path, year, semester):
+        # Read the CSV file using pandas
+        try:
+            grading_data = pd.read_csv(file_path)
+
+            # If the data is successfully read, display it and enable the save button
+            if not grading_data.empty:
+                messagebox.showinfo("Success", f"Processed grading sheet data for {year} {semester}")
+                self.grading_data = grading_data  # Store grading data
+                self.year = year  # Store year for later use
+                self.semester = semester  # Store semester for later use
+                self.display_grading_data(grading_data)
+                self.save_button.config(state=tk.NORMAL)  # Enable the Save button
+            else:
+                messagebox.showerror("Error", f"No data found in {file_path}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error loading file: {e}")
+
+    def on_save_button_click(self):
+    # Call the save_grading_data method when the button is clicked
+        try:
+            self.db_handler.save_grading_data(self.grading_data, self.year, self.semester)
+            messagebox.showinfo("Success", "Grades have been successfully saved to the database.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save grades: {e}")
+
+
+    def display_grading_data(self, grading_data):
+        # Clear the previous frame content if already present
+        if self.data_frame:
+            self.data_frame.destroy()
+
+        # Create a new frame to hold the grading data table
+        self.data_frame = tk.Frame(self, bg="#008080")
+        self.data_frame.pack(expand=True, fill='both', padx=10, pady=10)
+
+        # Create a Treeview with dynamic columns based on the CSV data
+        tree = ttk.Treeview(self.data_frame, columns=list(grading_data.columns), show='headings')
+        tree.pack(expand=True, fill='both')
+
+        # Add table headers
+        for col in grading_data.columns:
+            tree.heading(col, text=col)
+            tree.column(col, anchor='center', width=100)  # Adjust the width for better display
+
+        # Add rows to the table
+        for _, row in grading_data.iterrows():
+            tree.insert("", "end", values=list(row))
+
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(self.data_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+
+        # Optionally, you can save the grading_data dataframe to a class variable for future joining operations
+        self.grading_data = grading_data
